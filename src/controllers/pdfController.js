@@ -1,11 +1,13 @@
 const pdfService = require("../services/pdfService");
 const logger = require("../utils/logger");
 
-exports.extractPdfToJson = async (req, res, next) => {
+exports.extractPdfToJson = async (req, res) => {
   try {
     const url = req.query.url;
     if (!url) {
-      throw new Error("URL parameter is required");
+      return res
+        .status(400)
+        .json({ status: "fail", message: "URL parameter is required" });
     }
 
     logger.info(`Received request to process PDF from URL: ${url}`);
@@ -18,6 +20,9 @@ exports.extractPdfToJson = async (req, res, next) => {
     });
   } catch (err) {
     logger.error(`Request failed: ${err.message}`);
-    next(err);
+    res.status(400).json({
+      status: "fail",
+      message: err.message,
+    });
   }
 };

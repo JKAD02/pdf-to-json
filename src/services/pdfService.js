@@ -1,9 +1,44 @@
 const { PdfDataReader } = require("pdf-data-parser");
 const logger = require("../utils/logger");
+const axios = require("axios");
+
+const keyMappings = {
+  "Name of the Player": "PlayerName",
+  "Given Name Family Name": "PlayerName",
+};
+
+const standardizeKeys = (row, headerRow) => {
+  const obj = {};
+  headerRow.forEach((header, index) => {
+    const standardizedKey = keyMappings[header] || header;
+    obj[standardizedKey] = row[index];
+  });
+  return obj;
+};
+
+const isValidUrl = async (url) => {
+  try {
+    const response = await axios.head(url);
+    return response.status === 200;
+  } catch (err) {
+    return false;
+  }
+};
 
 exports.processPdf = (url) => {
-  return new Promise((resolve, reject) => {
-    let reader = new PdfDataReader({ url });
+  return new Promise(async (resolve, reject) => {
+    if (!(await isValidUrl(url))) {
+      logger.error(`Invalid URL: ${url}`);
+      return reject(new Error("Invalid URL"));
+    }
+
+    let reader;
+    try {
+      reader = new PdfDataReader({ url });
+    } catch (error) {
+      logger.error(`Failed to initialize PDF reader for URL: ${url}`);
+      return reject(new Error("Failed to initialize PDF reader"));
+    }
 
     let rows = [];
 
@@ -15,33 +50,22 @@ exports.processPdf = (url) => {
     reader.on("end", () => {
       logger.info("Finished processing PDF");
 
+      if (rows.length === 0) {
+        return reject(new Error("No data found in PDF"));
+      }
+
       const filteredRows = rows.filter((row) => row.length >= 9);
 
-      const rowsWithObj = filteredRows.slice(1).map((row) => {
-        const obj = {};
+      const rowsWithObj = filteredRows
+        .slice(1)
+        .map((row) => standardizeKeys(row, filteredRows[0]));
 
-        let count = 1;
-
-        for (let i = 0; i < row.length; i++) {
-          if (
-            filteredRows[0][i] in obj ||
-            `${filteredRows[0][i]}-${count}` in obj
-          ) {
-            obj[`${filteredRows[0][i]}-${count}`] = filteredRows[0][i];
-            delete obj[filteredRows[0][i]];
-            count++;
-            obj[`${filteredRows[0][i]}-${count}`] = row[i];
-          } else {
-            obj[filteredRows[0][i]] = row[i];
-          }
-        }
-
-        return obj;
-      });
+      const title = rows[0][0];
+      const date = rows[1][0];
 
       resolve({
-        title: rows[0][0],
-        date: rows[1][0],
+        title,
+        date,
         data: rowsWithObj,
       });
     });
